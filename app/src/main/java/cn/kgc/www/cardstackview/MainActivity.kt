@@ -16,6 +16,7 @@ class MainActivity : AppCompatActivity() {
 
     class MyAdapter(val context: Context) : BaseAdapter() {
         val dataList = List<String>(10,{it->"item is $it"})
+
         override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
             var view: View
             if(convertView == null){

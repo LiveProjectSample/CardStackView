@@ -1,10 +1,13 @@
 package cn.kgc.www.cardstackview
 
 import android.content.Context
+import android.os.Build
+import android.support.annotation.RequiresApi
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.widget.BaseAdapter
 
 /**
@@ -20,6 +23,7 @@ class CardStackView : ViewGroup {
 
     val childTopMargin = resources.getDimension(R.dimen.dp25)
     val childSideMargin = resources.getDimension(R.dimen.dp50)
+    var topIndex = 0
 
     constructor(context: Context):super(context){
     }
@@ -58,11 +62,38 @@ class CardStackView : ViewGroup {
 
     fun setAdapter(adapter: BaseAdapter){
         myAdapter = adapter
+        topIndex = 0
         //最多显示3个子view
         //存在一个数组当中的
         //index从0开始描绘
         for(index in 0..2){
             addView(myAdapter!!.getView(index, null, null),0)
+        }
+
+        val observer = viewTreeObserver
+        observer.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener{
+            @RequiresApi(Build.VERSION_CODES.JELLY_BEAN)
+            override fun onGlobalLayout() {
+                viewTreeObserver.removeOnGlobalLayoutListener(this)
+                setAllViewsScale()
+            }
+
+        })
+
+    }
+
+    private fun setAllViewsScale(){
+        for(childIndex in childCount - 1 downTo 0){
+            val child = getChildAt(childIndex)
+
+            child.scaleX = 1 - 0.1f*(2  - childIndex)
+            child.scaleY = 1 - 0.1f*(2  - childIndex)
+
+            val deltaY = child.height*(1-child.scaleY)/2f
+            if(childIndex != childCount - 1){
+                child.translationY = -deltaY - childTopMargin
+            }
+
         }
     }
 
@@ -90,10 +121,15 @@ class CardStackView : ViewGroup {
                 topView.translationX = deltaX
             }
             MotionEvent.ACTION_UP->{
-                deltaX = 0f
-                lastX = 0f
                 val topView = getChildAt(childCount - 1)
-                topView.translationX = deltaX
+
+                if(Math.abs(deltaX) >= childSideMargin){
+                    switchToNext()
+                }else{
+                    deltaX = 0f
+                    lastX = 0f
+                    topView.translationX = 0f
+                }
             }
         }
         return true
@@ -117,5 +153,16 @@ class CardStackView : ViewGroup {
             }
         }
         return super.dispatchTouchEvent(ev)
+    }
+
+    private fun switchToNext(){
+        val index = (topIndex + 3)%myAdapter!!.count
+        topIndex = (topIndex+1)%myAdapter!!.count
+        val frontView = getChildAt(childCount - 1)
+        removeViewAt(childCount - 1)
+        addView(myAdapter!!.getView(index, frontView, null),0)
+        deltaX = 0f
+        lastX = 0f
+        frontView.translationX = 0f
     }
 }
