@@ -1,5 +1,7 @@
 package cn.kgc.www.cardstackview
 
+import android.animation.Animator
+import android.animation.ValueAnimator
 import android.content.Context
 import android.os.Build
 import android.support.annotation.RequiresApi
@@ -8,6 +10,7 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.animation.LinearInterpolator
 import android.widget.BaseAdapter
 
 /**
@@ -24,6 +27,9 @@ class CardStackView : ViewGroup {
     val childTopMargin = resources.getDimension(R.dimen.dp25)
     val childSideMargin = resources.getDimension(R.dimen.dp50)
     var topIndex = 0
+
+    var fadeAnim: ValueAnimator? = null
+    var isActionDealed = false
 
     constructor(context: Context):super(context){
     }
@@ -119,23 +125,107 @@ class CardStackView : ViewGroup {
                 lastX = event.x
                 val topView = getChildAt(childCount - 1)
                 topView.translationX = deltaX
+
+                var percent = Math.abs(deltaX/childSideMargin)
+                if(percent > 1){
+                    percent = 1f
+                }
+                scaleUnderViews(percent)
             }
             MotionEvent.ACTION_UP->{
                 val topView = getChildAt(childCount - 1)
 
                 if(Math.abs(deltaX) >= childSideMargin){
-                    switchToNext()
+                    startFadeAnim(true)
                 }else{
-                    deltaX = 0f
-                    lastX = 0f
-                    topView.translationX = 0f
+                    startFadeAnim(false)
+//                    deltaX = 0f
+//                    lastX = 0f
+//                    topView.translationX = 0f
                 }
             }
         }
         return true
     }
 
+    private fun scaleUnderViews(percent: Float) {
+        for(childIndex in childCount - 2 downTo 0){
+            val child = getChildAt(childIndex)
+            val zoom = 0.1f*percent
+
+            child.scaleX = 1 - 0.1f*(2  - childIndex) + zoom
+            child.scaleY = 1 - 0.1f*(2  - childIndex) + zoom
+
+
+            if(childIndex == 1){
+                val deltaY = 0.05f*(1-percent)*child.height
+                child.translationY = -deltaY-childTopMargin*(1-percent)
+            }else{
+                val deltaY = (1-child.scaleY)/2*child.height
+                child.translationY = -deltaY-childTopMargin
+            }
+        }
+    }
+
+    private fun startFadeAnim(isSwitch: Boolean){
+        if(fadeAnim == null || !fadeAnim!!.isRunning){
+            val speed = (width - childSideMargin)/500f
+            val time = if(isSwitch){
+                500 - Math.abs(deltaX)/speed
+            }else{
+                Math.abs(deltaX)/speed
+            }
+            fadeAnim = ValueAnimator.ofInt(0,time.toInt()).setDuration(time.toLong())
+            fadeAnim!!.interpolator = LinearInterpolator()
+            fadeAnim!!.addUpdateListener(object: ValueAnimator.AnimatorUpdateListener{
+                override fun onAnimationUpdate(animation: ValueAnimator) {
+                    val value = animation.animatedValue.toString().toInt()
+                    val animMove = value*speed
+                    val frontView = getChildAt(childCount - 1)
+                    when{
+                        deltaX<0&&isSwitch || deltaX>0&&!isSwitch->{
+                            frontView.translationX = deltaX - animMove
+                        }
+                        deltaX>0&&isSwitch || deltaX<0&&!isSwitch->{
+                            frontView.translationX = deltaX + animMove
+                        }
+                    }
+                    var percent = Math.abs(frontView.translationX/childSideMargin)
+                    if(percent>=1f){
+                        percent = 1f
+                    }
+                    scaleUnderViews(percent)
+                }
+            })
+            fadeAnim!!.addListener(object: Animator.AnimatorListener{
+                override fun onAnimationRepeat(animation: Animator?) {
+                }
+
+                override fun onAnimationEnd(animation: Animator?) {
+                    if(isSwitch){
+                        switchToNext()
+                    }else{
+                        lastX = 0f
+                        deltaX = 0f
+                        setAllViewsScale()
+                    }
+
+                }
+
+                override fun onAnimationCancel(animation: Animator?) {
+                }
+
+                override fun onAnimationStart(animation: Animator?) {
+                }
+
+            })
+        }
+        fadeAnim!!.start()
+    }
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if(fadeAnim != null && fadeAnim!!.isRunning)return true
+        if(ev.action != MotionEvent.ACTION_DOWN &&!isActionDealed) return true
+
         if(mTracker == null){
             mTracker = VelocityTracker.obtain()
         }
@@ -143,6 +233,7 @@ class CardStackView : ViewGroup {
             MotionEvent.ACTION_DOWN->{
                 mTracker!!.addMovement(ev)
                 lastX = ev.x
+                isActionDealed = true
             }
             MotionEvent.ACTION_MOVE->{
                 mTracker!!.addMovement(ev)
@@ -150,6 +241,7 @@ class CardStackView : ViewGroup {
             MotionEvent.ACTION_UP->{
                 mTracker!!.recycle()
                 mTracker = null
+                isActionDealed = false
             }
         }
         return super.dispatchTouchEvent(ev)
